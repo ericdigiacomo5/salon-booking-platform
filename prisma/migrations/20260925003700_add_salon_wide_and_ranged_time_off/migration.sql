@@ -1,0 +1,6 @@
+ALTER TABLE "TimeOff" DROP CONSTRAINT "TimeOff_artistId_fkey";
+
+ALTER TABLE "TimeOff" ADD COLUMN     "endDate" TIMESTAMP(3),
+ALTER COLUMN "artistId" DROP NOT NULL;
+
+ALTER TABLE "TimeOff" ADD CONSTRAINT "TimeOff_artistId_fkey" FOREIGN KEY ("artistId") REFERENCES "Artist"("id") ON DELETE SET NULL ON UPDATE CASCADE;

@@ -1,0 +1,5 @@
+ALTER TABLE "User" ADD COLUMN "phone" TEXT;
+
+UPDATE "User" SET "phone" = 'UNKNOWN' WHERE "phone" IS NULL;
+
+ALTER TABLE "User" ALTER COLUMN "phone" SET NOT NULL;

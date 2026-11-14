@@ -1,0 +1,145 @@
+import { SLOT_MINUTES, timeStringToDate, type ScheduleColumn } from "@/lib/schedule-grid"
+import { formatSalonDate, formatSalonTime, salonMinutesOfDay } from "@/lib/salon-time"
+import { Badge } from "@/components/ui/badge"
+import { ScheduleBlock } from "./schedule-block"
+import {
+    ARTIST_COLOR_CYCLE,
+    type AdminAppointment,
+    type CategoryColors,
+} from "./appointment-shared"
+
+function toMinutes(time: string): number {
+    const [hours, minutes] = time.split(":").map(Number)
+    return hours * 60 + minutes
+}
+
+function toTimeString(minutes: number): string {
+    return `${String(Math.floor(minutes / 60)).padStart(2, "0")}:${String(minutes % 60).padStart(2, "0")}`
+}
+
+export function ScheduleArtistColumn({
+    scheduleColumn,
+    columnIndex,
+    appointments,
+    gridStartMinutes,
+    totalRows,
+    categoryColors,
+    onSelect,
+    onBookSlot,
+}: {
+    scheduleColumn: ScheduleColumn
+    columnIndex: number
+    appointments: AdminAppointment[]
+    gridStartMinutes: number
+    totalRows: number
+    categoryColors: CategoryColors
+    onSelect: (id: string) => void
+    onBookSlot: (artistId: string, startTime: Date) => void
+}) {
+    const { artist, date, heading, isToday, colorIndex, workingWindow, timeOff } = scheduleColumn
+    const color = ARTIST_COLOR_CYCLE[colorIndex % ARTIST_COLOR_CYCLE.length]
+    const isOff = workingWindow.start === null || workingWindow.end === null
+    const column = columnIndex + 2
+    const dayLabel = formatSalonDate(date, { weekday: "short", month: "short", day: "numeric" })
+
+    const windowStart = workingWindow.start ? toMinutes(workingWindow.start) : null
+    const windowEnd = workingWindow.end ? toMinutes(workingWindow.end) : null
+
+    const occupied = new Set<number>()
+    for (const appointment of appointments) {
+        const start = new Date(appointment.startTime)
+        const end = new Date(appointment.endTime)
+        const startMinutes = salonMinutesOfDay(start)
+        const slots = (end.getTime() - start.getTime()) / 60_000 / SLOT_MINUTES
+        for (let i = 0; i < slots; i++) occupied.add(startMinutes + i * SLOT_MINUTES)
+    }
+
+    const gridEndMinutes = gridStartMinutes + totalRows * SLOT_MINUTES
+    const timeOffBlocks = timeOff
+        .map((entry) => ({
+            ...entry,
+            from: Math.max(toMinutes(entry.start), gridStartMinutes),
+            to: Math.min(toMinutes(entry.end), gridEndMinutes),
+        }))
+        .filter((entry) => entry.from < entry.to)
+    const isTimeOff = (minutes: number) =>
+        timeOffBlocks.some((entry) => minutes >= entry.from && minutes < entry.to)
+
+    return (
+        <>
+            <div
+                style={{ gridColumn: column, gridRow: 1 }}
+                className={`sticky top-0 z-10 flex flex-col items-center justify-center gap-1 border-b border-l border-border px-2 py-2 ${
+                    isOff ? "bg-muted" : color.header
+                }`}
+            >
+                <span className="truncate text-sm font-medium">{heading}</span>
+                {isToday && <Badge tone="primary">Today</Badge>}
+                {isOff && <Badge tone="muted">Off</Badge>}
+            </div>
+
+            {Array.from({ length: totalRows }, (_, i) => {
+                const minutes = gridStartMinutes + i * SLOT_MINUTES
+                const style = { gridColumn: column, gridRow: i + 2 }
+                const inWorkingHours =
+                    windowStart !== null &&
+                    windowEnd !== null &&
+                    minutes >= windowStart &&
+                    minutes < windowEnd
+
+                if (!inWorkingHours) {
+                    return (
+                        <div
+                            key={i}
+                            style={style}
+                            className="border-b border-l border-border bg-muted/40"
+                        />
+                    )
+                }
+                if (occupied.has(minutes) || isTimeOff(minutes)) {
+                    return <div key={i} style={style} className="border-b border-l border-border" />
+                }
+
+                const startTime = timeStringToDate(date, toTimeString(minutes))
+                return (
+                    <button
+                        key={i}
+                        type="button"
+                        style={style}
+                        onClick={() => onBookSlot(artist.id, startTime)}
+                        aria-label={`Book ${artist.name} on ${dayLabel} at ${formatSalonTime(startTime)}`}
+                        className="cursor-pointer border-b border-l border-border hover:bg-accent/15 focus-visible:bg-accent/15 focus-visible:outline-none"
+                    />
+                )
+            })}
+
+            {timeOffBlocks.map((entry) => (
+                <div
+                    key={`${entry.from}-${entry.to}-${entry.salonWide}`}
+                    style={{
+                        gridColumn: column,
+                        gridRow: `${2 + (entry.from - gridStartMinutes) / SLOT_MINUTES} / span ${(entry.to - entry.from) / SLOT_MINUTES}`,
+                        backgroundImage:
+                            "repeating-linear-gradient(135deg, transparent 0 6px, color-mix(in srgb, currentColor 14%, transparent) 6px 7px)",
+                    }}
+                    className="overflow-hidden border-b border-l border-border bg-muted px-2 py-1 text-muted-foreground"
+                >
+                    <span className="block truncate text-xs font-medium">
+                        {entry.salonWide ? "Salon closed" : "Time off"}
+                    </span>
+                </div>
+            ))}
+
+            {appointments.map((appointment) => (
+                <ScheduleBlock
+                    key={appointment.id}
+                    appointment={appointment}
+                    gridStartMinutes={gridStartMinutes}
+                    column={column}
+                    categoryColors={categoryColors}
+                    onSelect={onSelect}
+                />
+            ))}
+        </>
+    )
+}

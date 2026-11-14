@@ -1,0 +1,81 @@
+import type { TimeOff } from "@/generated/prisma/client"
+import { Badge } from "@/components/ui/badge"
+import { Button } from "@/components/ui/button"
+import { ConfirmAction } from "@/components/ui/confirm-action"
+import { toLocalDateKey } from "@/lib/format"
+import { TimeOffForm, type TimeOffFormValues } from "./time-off-form"
+import { formatSalonDate } from "@/lib/salon-time"
+
+export function AdminTimeOffRow({
+    timeOff,
+    isEditing,
+    onEdit,
+    onCancelEdit,
+    onSave,
+    onDelete,
+}: {
+    timeOff: TimeOff
+    isEditing: boolean
+    onEdit: () => void
+    onCancelEdit: () => void
+    onSave: (values: TimeOffFormValues) => void
+    onDelete: () => void
+}) {
+    if (isEditing) {
+        return (
+            <TimeOffForm
+                submitLabel="Save Changes"
+                initial={{
+                    date: toLocalDateKey(new Date(timeOff.date)),
+                    endDate: timeOff.endDate ? toLocalDateKey(new Date(timeOff.endDate)) : null,
+                    startTime: timeOff.startTime,
+                    endTime: timeOff.endTime,
+                }}
+                onSubmit={onSave}
+                onCancel={onCancelEdit}
+            />
+        )
+    }
+
+    const dateLabel = timeOff.endDate
+        ? `${formatSalonDate(timeOff.date, { month: "short", day: "numeric" })} – ${formatSalonDate(
+              timeOff.endDate,
+              {
+                  month: "short",
+                  day: "numeric",
+                  year: "numeric",
+              },
+          )}`
+        : formatSalonDate(timeOff.date, {
+              weekday: "short",
+              month: "short",
+              day: "numeric",
+              year: "numeric",
+          })
+
+    return (
+        <div className="flex flex-col gap-3 rounded-lg border border-line bg-surface shadow-sm p-4 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+                <div className="flex flex-wrap items-center gap-2">
+                    <span className="font-medium text-surface-foreground">{dateLabel}</span>
+                    {!timeOff.artistId && <Badge tone="accent">Salon-Wide</Badge>}
+                </div>
+                <p className="mt-1 text-sm text-muted-foreground">
+                    {timeOff.startTime} &ndash; {timeOff.endTime}
+                </p>
+            </div>
+
+            <div className="flex shrink-0 gap-2">
+                <Button variant="secondary" size="md" onClick={onEdit}>
+                    Edit
+                </Button>
+                <ConfirmAction
+                    label="Delete"
+                    prompt="Remove this time off? Those hours become bookable."
+                    confirmLabel="Yes, Delete"
+                    onConfirm={onDelete}
+                />
+            </div>
+        </div>
+    )
+}

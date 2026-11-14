@@ -1,0 +1,196 @@
+import { useState, type FormEvent } from "react"
+import { Button } from "@/components/ui/button"
+import type { ServiceCategoryInfo } from "@/lib/service-category"
+import { MAX_SERVICE_FEE_CENTS } from "@/lib/pay-report"
+
+export type ServiceFormValues = {
+    name: string
+    description: string
+    categoryId: string
+    durationMinutes: number
+    priceCents: number
+    serviceFeeCents: number
+}
+
+const emptyValues: Omit<ServiceFormValues, "categoryId"> = {
+    name: "",
+    description: "",
+    durationMinutes: 45,
+    priceCents: 0,
+    serviceFeeCents: 0,
+}
+
+export function ServiceForm({
+    initial,
+    categories,
+    submitLabel,
+    onSubmit,
+    onCancel,
+}: {
+    initial?: ServiceFormValues
+    categories: ServiceCategoryInfo[]
+    submitLabel: string
+    onSubmit: (values: ServiceFormValues) => void
+    onCancel: () => void
+}) {
+    const [name, setName] = useState(initial?.name ?? emptyValues.name)
+    const [description, setDescription] = useState(initial?.description ?? emptyValues.description)
+    const choices = categories.filter((c) => c.active || c.id === initial?.categoryId)
+    const [categoryId, setCategoryId] = useState(
+        initial?.categoryId ?? choices.find((c) => c.active)?.id ?? "",
+    )
+    const [durationMinutes, setDurationMinutes] = useState(
+        String(initial?.durationMinutes ?? emptyValues.durationMinutes),
+    )
+    const [priceDollars, setPriceDollars] = useState(
+        String((initial?.priceCents ?? emptyValues.priceCents) / 100),
+    )
+
+    const [feeDollars, setFeeDollars] = useState(
+        String((initial?.serviceFeeCents ?? emptyValues.serviceFeeCents) / 100),
+    )
+
+    function handleSubmit(e: FormEvent) {
+        e.preventDefault()
+        onSubmit({
+            name,
+            description,
+            categoryId,
+            durationMinutes: Number(durationMinutes),
+            priceCents: Math.round(Number(priceDollars) * 100),
+            serviceFeeCents: Math.round(Number(feeDollars || 0) * 100),
+        })
+    }
+
+    return (
+        <form
+            onSubmit={handleSubmit}
+            className="flex flex-col gap-4 rounded-lg border border-line bg-surface shadow-sm p-4"
+        >
+            <div>
+                <label
+                    htmlFor="service-name"
+                    className="block text-xs font-medium text-muted-foreground"
+                >
+                    Name
+                </label>
+                <input
+                    id="service-name"
+                    required
+                    value={name}
+                    onChange={(e) => setName(e.target.value)}
+                    className="mt-1 h-11 w-full rounded-sm border border-border bg-background px-3 text-sm text-foreground"
+                />
+            </div>
+
+            <div>
+                <label
+                    htmlFor="service-description"
+                    className="block text-xs font-medium text-muted-foreground"
+                >
+                    Description
+                </label>
+                <textarea
+                    id="service-description"
+                    value={description}
+                    onChange={(e) => setDescription(e.target.value)}
+                    rows={2}
+                    className="mt-1 w-full rounded-sm border border-border bg-background px-3 py-2 text-sm text-foreground"
+                />
+            </div>
+
+            <div>
+                <label
+                    htmlFor="service-category"
+                    className="block text-xs font-medium text-muted-foreground"
+                >
+                    Category
+                </label>
+                <select
+                    id="service-category"
+                    required
+                    value={categoryId}
+                    onChange={(e) => setCategoryId(e.target.value)}
+                    className="mt-1 h-11 w-full rounded-sm border border-border bg-background px-3 text-sm text-foreground"
+                >
+                    {choices.map((category) => (
+                        <option key={category.id} value={category.id}>
+                            {category.active ? category.name : `${category.name} (retired)`}
+                        </option>
+                    ))}
+                </select>
+            </div>
+
+            <div className="flex gap-4">
+                <div className="flex-1">
+                    <label
+                        htmlFor="service-duration"
+                        className="block text-xs font-medium text-muted-foreground"
+                    >
+                        Duration (minutes)
+                    </label>
+                    <input
+                        id="service-duration"
+                        type="number"
+                        min={15}
+                        step={15}
+                        required
+                        value={durationMinutes}
+                        onChange={(e) => setDurationMinutes(e.target.value)}
+                        className="mt-1 h-11 w-full rounded-sm border border-border bg-background px-3 text-sm text-foreground"
+                    />
+                </div>
+
+                <div className="flex-1">
+                    <label
+                        htmlFor="service-price"
+                        className="block text-xs font-medium text-muted-foreground"
+                    >
+                        Price (USD)
+                    </label>
+                    <input
+                        id="service-price"
+                        type="number"
+                        min={0}
+                        step={0.01}
+                        required
+                        value={priceDollars}
+                        onChange={(e) => setPriceDollars(e.target.value)}
+                        className="mt-1 h-11 w-full rounded-sm border border-border bg-background px-3 text-sm text-foreground"
+                    />
+                </div>
+            </div>
+
+            <div>
+                <label
+                    htmlFor="service-fee"
+                    className="block text-xs font-medium text-muted-foreground"
+                >
+                    Service fee (USD)
+                </label>
+                <input
+                    id="service-fee"
+                    type="number"
+                    min={0}
+                    max={MAX_SERVICE_FEE_CENTS / 100}
+                    step={0.01}
+                    value={feeDollars}
+                    onChange={(e) => setFeeDollars(e.target.value)}
+                    aria-describedby="service-fee-help"
+                    className="mt-1 h-11 w-full rounded-sm border border-border bg-background px-3 text-sm text-foreground sm:w-40"
+                />
+                <p id="service-fee-help" className="mt-1 text-xs text-muted-foreground">
+                    Charged to the artist each time they perform this service (e.g. supplies), and
+                    taken out of their pay. Only visits checked out from now on use a new fee.
+                </p>
+            </div>
+
+            <div className="flex gap-2">
+                <Button type="submit">{submitLabel}</Button>
+                <Button type="button" variant="secondary" onClick={onCancel}>
+                    Cancel
+                </Button>
+            </div>
+        </form>
+    )
+}

@@ -1,0 +1,409 @@
+"use client"
+
+import { useState } from "react"
+import Link from "next/link"
+import { Badge } from "@/components/ui/badge"
+import { Button } from "@/components/ui/button"
+import { formatPrice } from "@/lib/format"
+import { formatSalonDate } from "@/lib/salon-time"
+import { TEXT_LIMITS } from "@/lib/validation"
+import { useToast } from "@/components/ui/toast"
+import {
+    CREDIT_NOTE_MAX,
+    GIFT_CARD_STATUS_LABEL,
+    MAX_GIFT_CARD_CENTS,
+    MIN_GIFT_CARD_CENTS,
+    type GiftCardRow,
+} from "@/lib/credit-shared"
+
+const STATUS_TONE: Record<GiftCardRow["status"], "success" | "muted" | "danger"> = {
+    ISSUED: "success",
+    REDEEMED: "muted",
+    VOID: "danger",
+}
+
+const MIN_VALUE_DOLLARS = MIN_GIFT_CARD_CENTS / 100
+const MAX_VALUE_DOLLARS = MAX_GIFT_CARD_CENTS / 100
+
+function formatDate(value: Date | string): string {
+    return formatSalonDate(value, { month: "short", day: "numeric", year: "numeric" })
+}
+
+function IssueGiftCardForm({ onIssued }: { onIssued: (card: GiftCardRow) => void }) {
+    const [value, setValue] = useState("")
+    const [purchaserName, setPurchaserName] = useState("")
+    const [recipientName, setRecipientName] = useState("")
+    const [error, setError] = useState<string | null>(null)
+    const [busy, setBusy] = useState(false)
+
+    const dollars = Number(value)
+    const valueCents = Math.round(dollars * 100)
+    const ready =
+        value.trim() !== "" &&
+        !Number.isNaN(dollars) &&
+        dollars >= MIN_VALUE_DOLLARS &&
+        dollars <= MAX_VALUE_DOLLARS &&
+        recipientName.trim().length >= 2
+
+    async function handleSubmit(e: React.FormEvent) {
+        e.preventDefault()
+        if (!ready) return
+        setError(null)
+        setBusy(true)
+
+        try {
+            const res = await fetch("/api/admin/gift-cards", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ valueCents, purchaserName, recipientName }),
+            })
+
+            const body = await res.json().catch(() => null)
+            if (!res.ok) {
+                setError(body?.error ?? "Couldn't record the gift certificate. Please try again.")
+                return
+            }
+
+            setValue("")
+            setPurchaserName("")
+            setRecipientName("")
+            onIssued(body.data)
+        } catch {
+            setError("Network error. Please try again.")
+        } finally {
+            setBusy(false)
+        }
+    }
+
+    const inputClass =
+        "mt-1 h-11 w-full rounded-sm border border-border bg-background px-3 text-sm text-foreground"
+
+    return (
+        <form
+            onSubmit={handleSubmit}
+            className="flex flex-col gap-3 rounded-lg border border-line bg-surface shadow-sm p-4"
+        >
+            <p className="text-sm text-muted-foreground">
+                Ring up the sale on the POS first, then record it here and handwrite the
+                certificate. Write the recipient&apos;s name on it exactly as entered here — the
+                certificate is redeemed by that name. The certificate must also carry the gift card
+                terms (see the Terms page).
+            </p>
+            <div className="grid gap-3 sm:grid-cols-3">
+                <div>
+                    <label
+                        htmlFor="gift-card-value"
+                        className="block text-xs font-medium text-muted-foreground"
+                    >
+                        Value ($)
+                    </label>
+                    <input
+                        id="gift-card-value"
+                        type="number"
+                        inputMode="decimal"
+                        min={MIN_VALUE_DOLLARS}
+                        max={MAX_VALUE_DOLLARS}
+                        step={0.01}
+                        value={value}
+                        onChange={(e) => setValue(e.target.value)}
+                        disabled={busy}
+                        className={inputClass}
+                    />
+                </div>
+                <div>
+                    <label
+                        htmlFor="gift-card-purchaser"
+                        className="block text-xs font-medium text-muted-foreground"
+                    >
+                        Bought by (optional)
+                    </label>
+                    <input
+                        id="gift-card-purchaser"
+                        type="text"
+                        maxLength={TEXT_LIMITS.personName}
+                        value={purchaserName}
+                        onChange={(e) => setPurchaserName(e.target.value)}
+                        disabled={busy}
+                        className={inputClass}
+                    />
+                </div>
+                <div>
+                    <label
+                        htmlFor="gift-card-recipient"
+                        className="block text-xs font-medium text-muted-foreground"
+                    >
+                        For (recipient&apos;s name)
+                    </label>
+                    <input
+                        id="gift-card-recipient"
+                        type="text"
+                        required
+                        minLength={2}
+                        maxLength={TEXT_LIMITS.personName}
+                        value={recipientName}
+                        onChange={(e) => setRecipientName(e.target.value)}
+                        disabled={busy}
+                        className={inputClass}
+                    />
+                </div>
+            </div>
+            {error && (
+                <p role="alert" className="text-sm text-danger">
+                    {error}
+                </p>
+            )}
+            <Button type="submit" size="md" disabled={busy || !ready}>
+                {busy ? "Recording..." : "Record Gift Certificate"}
+            </Button>
+        </form>
+    )
+}
+
+function GiftCardListRow({
+    card,
+    onUpdated,
+}: {
+    card: GiftCardRow
+    onUpdated: (card: GiftCardRow) => void
+}) {
+    const [voiding, setVoiding] = useState(false)
+    const [reason, setReason] = useState("")
+    const [error, setError] = useState<string | null>(null)
+    const [busy, setBusy] = useState(false)
+
+    async function handleVoid(e: React.FormEvent) {
+        e.preventDefault()
+        if (!reason.trim()) return
+        setError(null)
+        setBusy(true)
+
+        try {
+            const res = await fetch(`/api/admin/gift-cards/${card.id}`, {
+                method: "PATCH",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ status: "VOID", voidReason: reason.trim() }),
+            })
+
+            const body = await res.json().catch(() => null)
+            if (!res.ok) {
+                setError(body?.error ?? "Couldn't void the card. Please try again.")
+                return
+            }
+
+            onUpdated(body.data)
+            setVoiding(false)
+        } catch {
+            setError("Network error. Please try again.")
+        } finally {
+            setBusy(false)
+        }
+    }
+
+    return (
+        <li className="flex flex-col gap-2 p-3 text-sm">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+                <div className="flex flex-wrap items-center gap-2">
+                    <span className="font-semibold text-foreground">
+                        {formatPrice(card.valueCents)}
+                    </span>
+                    <span className="text-foreground">
+                        {`for ${card.recipientName ?? "(no name)"}`}
+                    </span>
+                    {card.codeLast4 && (
+                        <span className="font-mono text-muted-foreground">
+                            ····{card.codeLast4}
+                        </span>
+                    )}
+                    <Badge tone={STATUS_TONE[card.status]}>
+                        {GIFT_CARD_STATUS_LABEL[card.status]}
+                    </Badge>
+                </div>
+                {card.status === "ISSUED" && !voiding && (
+                    <button
+                        type="button"
+                        onClick={() => setVoiding(true)}
+                        className="min-h-11 cursor-pointer text-sm font-medium text-danger"
+                    >
+                        Void
+                    </button>
+                )}
+            </div>
+            <p className="text-muted-foreground">
+                {`Sold ${formatDate(card.issuedAt)} by ${card.issuedBy.name ?? card.issuedBy.email}${card.purchaserName ? ` · from ${card.purchaserName}` : ""}`}
+            </p>
+            {card.status === "REDEEMED" && card.redeemedBy && card.redeemedAt && (
+                <p className="text-muted-foreground">
+                    {`Redeemed ${formatDate(card.redeemedAt)} by `}
+                    <Link href={`/admin/users/${card.redeemedBy.id}`}>
+                        {card.redeemedBy.name ?? card.redeemedBy.email}
+                    </Link>
+                </p>
+            )}
+            {card.status === "VOID" && card.voidedAt && (
+                <p className="text-muted-foreground">{`Voided ${formatDate(card.voidedAt)}${card.voidedBy ? ` by ${card.voidedBy.name ?? card.voidedBy.email}` : ""}: ${card.voidReason ?? ""}`}</p>
+            )}
+            {voiding && (
+                <form
+                    onSubmit={handleVoid}
+                    className="flex flex-col gap-2 sm:flex-row sm:items-end"
+                >
+                    <div className="flex-1">
+                        <label
+                            htmlFor={`void-${card.id}`}
+                            className="block text-xs font-medium text-muted-foreground"
+                        >
+                            Reason (e.g. certificate lost, reissued)
+                        </label>
+                        <input
+                            id={`void-${card.id}`}
+                            type="text"
+                            maxLength={CREDIT_NOTE_MAX}
+                            value={reason}
+                            onChange={(e) => setReason(e.target.value)}
+                            disabled={busy}
+                            className="mt-1 h-11 w-full rounded-sm border border-border bg-background px-3 text-sm text-foreground"
+                        />
+                    </div>
+                    <Button
+                        type="submit"
+                        variant="danger"
+                        size="md"
+                        disabled={busy || !reason.trim()}
+                    >
+                        Void Card
+                    </Button>
+                    <Button
+                        type="button"
+                        variant="ghost"
+                        size="md"
+                        onClick={() => setVoiding(false)}
+                        disabled={busy}
+                    >
+                        Cancel
+                    </Button>
+                </form>
+            )}
+            {error && (
+                <p role="alert" className="text-sm text-danger">
+                    {error}
+                </p>
+            )}
+        </li>
+    )
+}
+
+export function AdminGiftCardsManager({
+    initialCards,
+    customerCreditCents,
+}: {
+    initialCards: GiftCardRow[]
+    customerCreditCents: number
+}) {
+    const [cards, setCards] = useState(initialCards)
+    const [query, setQuery] = useState("")
+    const toast = useToast()
+
+    const unredeemed = cards.filter((card) => card.status === "ISSUED")
+    const unredeemedCents = unredeemed.reduce((sum, card) => sum + card.valueCents, 0)
+
+    const q = query.trim().toLowerCase()
+    const shown = q
+        ? cards.filter((card) =>
+              [
+                  card.codeLast4,
+                  card.purchaserName,
+                  card.recipientName,
+                  card.redeemedBy?.name,
+                  card.redeemedBy?.email,
+              ]
+                  .filter((field): field is string => !!field)
+                  .some((field) => field.toLowerCase().includes(q)),
+          )
+        : cards
+
+    return (
+        <div className="flex flex-col gap-6">
+            <dl className="grid gap-3 sm:grid-cols-3">
+                {[
+                    [
+                        "Store credit on accounts",
+                        formatPrice(customerCreditCents),
+                        "border-l-accent bg-accent/5",
+                    ],
+                    [
+                        `Unredeemed certificates (${unredeemed.length})`,
+                        formatPrice(unredeemedCents),
+                        "border-l-primary bg-primary/10",
+                    ],
+                    [
+                        "Total owed to customers",
+                        formatPrice(customerCreditCents + unredeemedCents),
+                        "border-l-lacquer bg-lacquer/5",
+                    ],
+                ].map(([label, value, tone]) => (
+                    <div
+                        key={label}
+                        className={`rounded-lg border border-line border-l-4 p-4 shadow-sm ${tone}`}
+                    >
+                        <dt className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                            {label}
+                        </dt>
+                        <dd className="mt-1 font-serif text-2xl font-bold text-surface-foreground">
+                            {value}
+                        </dd>
+                    </div>
+                ))}
+            </dl>
+
+            <section>
+                <h2 className="text-base font-semibold text-foreground">Sell a Gift Certificate</h2>
+                <div className="mt-3">
+                    <IssueGiftCardForm
+                        onIssued={(card) => {
+                            setCards((prev) => [card, ...prev])
+                            toast(
+                                `Recorded: ${formatPrice(card.valueCents)} for ${card.recipientName}. Redeem it from the customer's page.`,
+                            )
+                        }}
+                    />
+                </div>
+            </section>
+
+            <section>
+                <h2 className="text-base font-semibold text-foreground">All Gift Certificates</h2>
+                <label htmlFor="gift-card-search" className="sr-only">
+                    Search gift certificates
+                </label>
+                <input
+                    id="gift-card-search"
+                    type="search"
+                    placeholder="Search by recipient, buyer or redeemer"
+                    value={query}
+                    onChange={(e) => setQuery(e.target.value)}
+                    className="mt-3 h-11 w-full rounded-sm border border-border bg-background px-3 text-sm text-foreground"
+                />
+                {shown.length === 0 ? (
+                    <p className="mt-3 text-sm text-muted-foreground">
+                        {cards.length === 0
+                            ? "No gift certificates sold yet."
+                            : "No certificates match that search."}
+                    </p>
+                ) : (
+                    <ul className="mt-3 flex flex-col divide-y divide-border rounded-sm border border-border">
+                        {shown.map((card) => (
+                            <GiftCardListRow
+                                key={card.id}
+                                card={card}
+                                onUpdated={(updated) =>
+                                    setCards((prev) =>
+                                        prev.map((c) => (c.id === updated.id ? updated : c)),
+                                    )
+                                }
+                            />
+                        ))}
+                    </ul>
+                )}
+            </section>
+        </div>
+    )
+}

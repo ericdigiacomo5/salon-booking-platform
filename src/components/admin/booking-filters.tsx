@@ -1,0 +1,82 @@
+"use client"
+
+import type { ChangeEvent } from "react"
+import type { Artist } from "@/generated/prisma/client"
+import type { ScheduleView } from "@/lib/schedule-grid"
+import { STATUS_LABEL } from "./appointment-shared"
+
+const STATUS_OPTIONS = ["PENDING", "CONFIRMED", "CANCELLED", "COMPLETED", "NO_SHOW"] as const
+
+export function BookingFilters({
+    artists,
+    currentStatus,
+    currentArtistId,
+    currentDateString,
+    view,
+}: {
+    artists: Artist[]
+    currentStatus: string
+    currentArtistId: string
+    currentDateString: string
+    view: ScheduleView
+}) {
+    function autoSubmit(e: ChangeEvent<HTMLSelectElement>) {
+        e.currentTarget.form?.requestSubmit()
+    }
+
+    return (
+        <form method="get" className="flex flex-wrap items-end gap-3">
+            <input type="hidden" name="dateString" value={currentDateString} />
+            {view === "week" && <input type="hidden" name="view" value="week" />}
+            <div>
+                <label htmlFor="status" className="block text-xs font-medium text-muted-foreground">
+                    Status
+                </label>
+                <select
+                    id="status"
+                    name="status"
+                    defaultValue={currentStatus}
+                    onChange={autoSubmit}
+                    className="mt-1 h-11 rounded-sm border border-border bg-background px-3 text-sm text-foreground"
+                >
+                    <option value="">All</option>
+                    {STATUS_OPTIONS.map((status) => (
+                        <option key={status} value={status}>
+                            {STATUS_LABEL[status]}
+                        </option>
+                    ))}
+                </select>
+            </div>
+
+            <div>
+                <label
+                    htmlFor="artistId"
+                    className="block text-xs font-medium text-muted-foreground"
+                >
+                    Artist
+                </label>
+                <select
+                    id="artistId"
+                    name="artistId"
+                    defaultValue={currentArtistId}
+                    onChange={autoSubmit}
+                    className="mt-1 h-11 rounded-sm border border-border bg-background px-3 text-sm text-foreground"
+                >
+                    {view === "day" && <option value="">All</option>}
+                    {artists.map((artist) => (
+                        <option key={artist.id} value={artist.id}>
+                            {artist.name}
+                        </option>
+                    ))}
+                </select>
+            </div>
+
+            <button
+                type="submit"
+                className="h-11 cursor-pointer rounded-md border border-foreground/25 bg-cream px-4 shadow-sm text-sm font-medium text-surface-foreground hover:bg-muted"
+            >
+                Filter
+            </button>
+        </form>
+    )
+}

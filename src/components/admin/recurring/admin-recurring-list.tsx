@@ -1,0 +1,86 @@
+"use client"
+
+import { useState } from "react"
+import Link from "next/link"
+import {
+    RecurringSeriesRow,
+    type RecurringAppointmentWithRelations,
+} from "@/components/recurring/recurring-series-row"
+
+export function AdminRecurringList({
+    initialSeries,
+}: {
+    initialSeries: RecurringAppointmentWithRelations[]
+}) {
+    const [series, setSeries] = useState(initialSeries)
+    const [error, setError] = useState<string | null>(null)
+    const [busyId, setBusyId] = useState<string | null>(null)
+    const [confirmingId, setConfirmingId] = useState<string | null>(null)
+
+    async function handleCancel(id: string) {
+        setError(null)
+        setBusyId(id)
+
+        try {
+            const res = await fetch(`/api/admin/recurring-appointments/${id}`, {
+                method: "PATCH",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ status: "CANCELLED" }),
+            })
+
+            if (!res.ok) {
+                const body = await res.json().catch(() => null)
+                setError(body?.error ?? "Couldn't cancel that series. Please try again.")
+                return
+            }
+
+            const body = await res.json()
+            setSeries((prev) =>
+                prev.map((s) => (s.id === id ? { ...s, ...body.data.recurringAppointment } : s)),
+            )
+            setConfirmingId(null)
+        } catch {
+            setError("Network error. Please try again.")
+        } finally {
+            setBusyId(null)
+        }
+    }
+
+    if (series.length === 0) {
+        return <p className="mt-6 text-muted-foreground">No standing appointments.</p>
+    }
+
+    return (
+        <div className="mt-6">
+            {error && (
+                <p role="alert" className="mb-3 text-sm text-danger">
+                    {error}
+                </p>
+            )}
+
+            <div className="flex flex-col gap-2">
+                {series.map((s) => (
+                    <div key={s.id} className="flex flex-col gap-1">
+                        <RecurringSeriesRow
+                            series={s}
+                            showCustomer
+                            busy={busyId === s.id}
+                            confirming={confirmingId === s.id}
+                            onCancel={() => setConfirmingId(s.id)}
+                            onConfirm={() => handleCancel(s.id)}
+                            onConfirmBack={() => setConfirmingId(null)}
+                        />
+                        {s.user && (
+                            <Link
+                                href={`/admin/users/${s.user.id}`}
+                                className="self-start pl-1 text-xs font-medium text-muted-foreground hover:text-foreground"
+                            >
+                                View customer &rarr;
+                            </Link>
+                        )}
+                    </div>
+                ))}
+            </div>
+        </div>
+    )
+}

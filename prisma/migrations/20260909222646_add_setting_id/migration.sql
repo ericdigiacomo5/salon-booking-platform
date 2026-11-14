@@ -1,0 +1,3 @@
+ALTER TABLE "AppSettings" DROP CONSTRAINT "AppSettings_pkey",
+ADD COLUMN     "id" INTEGER NOT NULL DEFAULT 1,
+ADD CONSTRAINT "AppSettings_pkey" PRIMARY KEY ("id");

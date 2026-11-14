@@ -1,0 +1,55 @@
+"use client"
+
+import type { ChangeEvent } from "react"
+import type { Artist } from "@/generated/prisma/client"
+import { SALON_WIDE_VALUE } from "@/lib/time-off"
+
+export function ArtistSelector({
+    artists,
+    currentArtistId,
+    allowSalonWide = false,
+}: {
+    artists: Artist[]
+    currentArtistId: string
+    allowSalonWide?: boolean
+}) {
+    function autoSubmit(e: ChangeEvent<HTMLSelectElement>) {
+        e.currentTarget.form?.requestSubmit()
+    }
+
+    return (
+        <form method="get" className="flex items-end gap-3">
+            <div>
+                <label
+                    htmlFor="artistId"
+                    className="block text-xs font-medium text-muted-foreground"
+                >
+                    Artist
+                </label>
+                <select
+                    id="artistId"
+                    name="artistId"
+                    defaultValue={currentArtistId}
+                    onChange={autoSubmit}
+                    className="mt-1 h-11 rounded-sm border border-border bg-background px-3 text-sm text-foreground"
+                >
+                    {allowSalonWide && (
+                        <option value={SALON_WIDE_VALUE}>All Artists (Salon-Wide)</option>
+                    )}
+                    {artists.map((artist) => (
+                        <option key={artist.id} value={artist.id}>
+                            {artist.name}
+                        </option>
+                    ))}
+                </select>
+            </div>
+
+            <button
+                type="submit"
+                className="h-11 cursor-pointer rounded-md border border-foreground/25 bg-cream px-4 shadow-sm text-sm font-medium text-surface-foreground hover:bg-muted"
+            >
+                Switch
+            </button>
+        </form>
+    )
+}
